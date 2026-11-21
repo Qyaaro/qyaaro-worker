@@ -18,14 +18,15 @@ export default {
       parts: [{text: String(m.content).slice(0, 2000)}]
     }));
 
-    const models = ["gemini-3.8-flash", "gemini-2.5-flash", "gemini-2.0-flash", "gemini-flash-latest"];
-    let lastError = "";
+    const models = ["gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-3.8-flash", "gemini-flash-latest"];
+    const errors = [];
     for (const model of models) {
       try {
         const r = await fetch(
           "https://generativelanguage.googleapis.com/v1beta/models/" + model + ":generateContent",
           {
             method: "POST",
+            signal: AbortSignal.timeout(5000),
             headers: {"Content-Type": "application/json", "x-goog-api-key": env.GEMINI_KEY},
             body: JSON.stringify({systemInstruction: {parts: [{text: system}]}, contents})
           }
@@ -33,11 +34,11 @@ export default {
         const j = await r.json();
         const text = j.candidates?.[0]?.content?.parts?.map(p => p.text || "").join("");
         if (text) return out(text);
-        lastError = model + ": " + (j.error?.message || j.promptFeedback?.blockReason || "khali jawab");
+        errors.push(model + " [" + r.status + "]: " + String(j.error?.message || j.promptFeedback?.blockReason || "khali").slice(0, 60));
       } catch (e) {
-        lastError = model + ": " + e.message;
+        errors.push(model + ": " + (e.name === "TimeoutError" ? "5s timeout" : e.message));
       }
     }
-    return out("Gemini error -> " + lastError.slice(0, 300));
+    return out("Gemini abhi busy hai, thodi der baad dobara bol. Detail: " + errors.join(" | "));
   }
 };
