@@ -30,13 +30,13 @@ export default {
 
     const bad = /whisper|guard|tts|orpheus|playai|embed|safeguard|compound|distil-whisper|transcri|vision-only/i;
     const chat = ids.filter(id => !bad.test(id));
-    // Pasand ka order: tez aur chhote pehle, phir bade.
-    const prefer = [/instant|8b|flash|mini|small/i, /llama/i, /gpt-oss/i, /qwen/i, /kimi/i];
+    // Pasand ka order: pehle bade aur samajhdaar models, phir chhote.
+    const prefer = [/70b|120b|large|versatile|maverick|kimi/i, /gpt-oss/i, /qwen/i, /llama/i];
     const ranked = [...chat].sort((a, b) => {
       const ra = prefer.findIndex(p => p.test(a)), rb = prefer.findIndex(p => p.test(b));
       return (ra < 0 ? 99 : ra) - (rb < 0 ? 99 : rb);
     });
-    const candidates = ranked.slice(0, 3);
+    const candidates = ranked.slice(0, 4);
     if (!candidates.length) return out("Groq par koi chat model nahi mila. Models: " + ids.join(", ").slice(0, 200));
 
     async function ask(model) {
@@ -44,7 +44,7 @@ export default {
       try {
         r = await fetch("https://api.groq.com/openai/v1/chat/completions", {
           method: "POST",
-          signal: AbortSignal.timeout(15000),
+          signal: AbortSignal.timeout(12000),
           headers: {"Content-Type": "application/json", ...auth},
           body: JSON.stringify({model, max_tokens: 700, messages: [{role: "system", content: system}, ...history]})
         });
@@ -58,11 +58,13 @@ export default {
       throw new Error(model + " [" + r.status + "]: " + String(j.error?.message || "khali").slice(0, 70));
     }
 
-    try {
-      return out(await Promise.any(candidates.map(ask)));
-    } catch (agg) {
-      const errs = (agg.errors || [agg]).map(e => e.message).join(" | ");
-      return out("Abhi jawab nahi mil paya. Detail: " + errs);
+    const errs = [];
+    // Pehle sabse achha model, na chale to baaki ek saath.
+    try { return out(await ask(candidates[0])); } catch (e) { errs.push(e.message); }
+    if (candidates.length > 1) {
+      try { return out(await Promise.any(candidates.slice(1).map(ask))); }
+      catch (agg) { (agg.errors || [agg]).forEach(e => errs.push(e.message)); }
     }
+    return out("Abhi jawab nahi mil paya. Detail: " + errs.join(" | ").slice(0, 400));
   }
 };
