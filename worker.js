@@ -1,13 +1,19 @@
 export default {
   async fetch(req, env) {
+    // Sirf ye sites Q-AI se baat kar sakti hain.
+    const ALLOWED = ["https://qyaaro.github.io", "https://reliable-tarsier-fdbc17.netlify.app"];
+    const origin = req.headers.get("Origin") || "";
     const cors = {
-      "Access-Control-Allow-Origin": "https://qyaaro.github.io",
+      "Access-Control-Allow-Origin": ALLOWED.includes(origin) ? origin : ALLOWED[0],
       "Access-Control-Allow-Headers": "Content-Type",
+      "Access-Control-Allow-Methods": "POST, OPTIONS",
+      "Vary": "Origin",
       "Content-Type": "application/json"
     };
     const out = (reply) => new Response(JSON.stringify({reply}), {headers: cors});
     if (req.method === "OPTIONS") return new Response(null, {headers: cors});
     if (req.method !== "POST") return out("QYAARO server chal raha hai.");
+    if (!ALLOWED.includes(origin)) return new Response(JSON.stringify({reply: "Ye site allowed nahi hai."}), {status: 403, headers: cors});
     if (!env.GROQ_KEY) return out("Error: GROQ_KEY secret nahi mila.");
 
     let body;
