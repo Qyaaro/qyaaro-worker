@@ -1,3 +1,6 @@
+// Model list ko kuch der yaad rakho (har message par dobara na maangna pade).
+let MODEL_CACHE = {at: 0, ids: []};
+
 export default {
   async fetch(req, env) {
     // Sirf ye sites Q-AI se baat kar sakti hain.
@@ -18,21 +21,31 @@ export default {
 
     let body;
     try { body = await req.json(); } catch (e) { return out("Error: bad request."); }
-    const system = String(body.system || "").slice(0, 2000);
-    const history = (body.messages || []).slice(-20).map(m => ({
-      role: m.role === "assistant" ? "assistant" : "user",
-      content: String(m.content).slice(0, 2000)
-    }));
+    // System prompt lamba ho sakta hai (persona + niyam), isliye limit badi rakhi hai.
+    const system = String(body.system || "").slice(0, 12000);
+    const history = (Array.isArray(body.messages) ? body.messages : [])
+      .filter(m => m && typeof m.content === "string" && m.content.trim())
+      .slice(-20)
+      .map(m => ({
+        role: m.role === "assistant" ? "assistant" : "user",
+        content: m.content.slice(0, 4000)
+      }));
+    if (!history.length) return out("Error: koi message nahi mila.");
 
     const auth = {"Authorization": "Bearer " + env.GROQ_KEY};
 
     // Groq se aaj ke chalne wale chat models ki list lo.
-    let ids = [];
-    try {
-      const r = await fetch("https://api.groq.com/openai/v1/models", {headers: auth, signal: AbortSignal.timeout(6000)});
-      const j = await r.json();
-      ids = (j.data || []).filter(m => m.active !== false).map(m => m.id);
-    } catch (e) { return out("Groq models list nahi mili: " + e.message); }
+    let ids = MODEL_CACHE.ids;
+    if (!ids.length || Date.now() - MODEL_CACHE.at > 10 * 60 * 1000) {
+      try {
+        const r = await fetch("https://api.groq.com/openai/v1/models", {headers: auth, signal: AbortSignal.timeout(6000)});
+        const j = await r.json();
+        const fresh = (j.data || []).filter(m => m.active !== false).map(m => m.id);
+        if (fresh.length) { ids = fresh; MODEL_CACHE = {at: Date.now(), ids: fresh}; }
+      } catch (e) {
+        if (!ids.length) return out("Groq models list nahi mili: " + e.message);
+      }
+    }
 
     const bad = /whisper|guard|tts|orpheus|playai|embed|safeguard|compound|distil-whisper|transcri|vision-only/i;
     const chat = ids.filter(id => !bad.test(id));
